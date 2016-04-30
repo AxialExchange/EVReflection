@@ -742,12 +742,17 @@ final public class EVReflection {
      - returns: the cleaned up key
      */
     private class func cleanupKey(anyObject: NSObject, key: String, tryMatch: NSDictionary?) -> String? {
-        if let hit = cleanupKeyCache[key] {
-            return hit
-        } else { //Miss:
-            let cleanedUpKey = EVReflection.cleanupKeyNotCached(anyObject, key: key, tryMatch: tryMatch)
-            cleanupKeyCache[key] = cleanedUpKey
-            return cleanedUpKey
+        if tryMatch == nil {
+            if let hit = cleanupKeyCache[key] {
+                return hit
+            } else { //Miss:
+                let cleanedUpKey = EVReflection.cleanupKeyNotCached(anyObject, key: key, tryMatch: tryMatch)
+                cleanupKeyCache[key] = cleanedUpKey
+                return cleanedUpKey
+            }
+        }
+        else {
+            return EVReflection.cleanupKeyNotCached(anyObject, key: key, tryMatch: tryMatch)
         }
     }
     
