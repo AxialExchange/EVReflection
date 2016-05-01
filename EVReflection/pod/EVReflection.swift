@@ -104,8 +104,8 @@ final public class EVReflection {
                     }
                 }
             //}
-            
-            if let dictKey = cleanupKey(anyObject, key: objectKey as? String ?? "", tryMatch: dictionary) {
+           
+            if let dictKey = cleanupKeyCached(anyObject, key: objectKey as? String ?? "", tryMatch: dictionary) {
                 if dictKey != objectKey  as? String {
                     keyMapping[dictKey] = objectKey as? String
                 }
@@ -129,7 +129,7 @@ final public class EVReflection {
             let reflected = Mirror(reflecting: theObject)
             var (properties, types) =  reflectedSub(theObject, reflected: reflected, convertionOptions: convertionOptions)
             if convertionOptions.contains(.KeyCleanup) {
-                 (properties, types) = cleanupKeysAndValues(theObject, properties:properties, types:types)
+                (properties, types) = cleanupKeysAndValues(theObject, properties:properties, types:types, convertionOptions: convertionOptions)
             }
             pdict = properties
             tdict = types
@@ -177,6 +177,7 @@ final public class EVReflection {
         }
         let jsonData = json!.dataUsingEncoding(NSUTF8StringEncoding)!
         do {
+            EVReflection.cleanupKeyCache = [ String : String? ]()
             if let jsonDic: [Dictionary<String, AnyObject>] = try NSJSONSerialization.JSONObjectWithData(jsonData, options: NSJSONReadingOptions.MutableContainers) as? [Dictionary<String, AnyObject>] {
                 let nsobjectype: NSObject.Type? = T.self as? NSObject.Type
                 if nsobjectype == nil {
@@ -188,6 +189,7 @@ final public class EVReflection {
                     return (setPropertiesfromDictionary($0, anyObject: nsobject, convertionOptions: convertionOptions) as? T)!
                 })
             }
+            EVReflection.cleanupKeyCache = nil
         } catch _ as NSError {}
         return result
     }
@@ -203,6 +205,7 @@ final public class EVReflection {
     public class func toJsonString(theObject: NSObject, convertionOptions: ConvertionOptions = .Default) -> String {
         var result: String = ""
         autoreleasepool {
+            EVReflection.cleanupKeyCache = [ String : String? ]()
             var (dict, _) = EVReflection.toDictionary(theObject, convertionOptions: convertionOptions)
             dict = convertDictionaryForJsonSerialization(dict)
             do {
@@ -211,6 +214,8 @@ final public class EVReflection {
                     result =  jsonString as String
                 }
             } catch { }
+            EVReflection.cleanupKeyCache = nil
+
         }
         return result
     }
@@ -716,11 +721,11 @@ final public class EVReflection {
     
     - returns: dictionairy of the property mappings
     */
-    private class func cleanupKeysAndValues(theObject: NSObject, properties: NSDictionary, types: NSDictionary) -> (NSDictionary, NSDictionary) {
+    private class func cleanupKeysAndValues(theObject: NSObject, properties: NSDictionary, types: NSDictionary, convertionOptions: ConvertionOptions = .Default) -> (NSDictionary, NSDictionary) {
         let newProperties = NSMutableDictionary()
         let newTypes = NSMutableDictionary()
         for (key, _) in properties {
-            if let newKey = cleanupKey(theObject, key: (key as? String)!, tryMatch: nil) {
+            if let newKey = cleanupKeyCached(theObject, key: (key as? String)!, tryMatch: nil) {
                 newProperties[newKey] = properties[(key as? String)!]
                 newTypes[newKey] = types[(key as? String)!]
             }
@@ -728,9 +733,6 @@ final public class EVReflection {
         return (newProperties, newTypes)
     }
     
-
-    /// cleanupKey cache
-    private static var cleanupKeyCache = [ String : String? ]()
 
     /**
      Try to map a property name to a json/dictionary key by applying some rules like property mapping, snake case conversion or swift keyword fix.
@@ -742,21 +744,6 @@ final public class EVReflection {
      - returns: the cleaned up key
      */
     private class func cleanupKey(anyObject: NSObject, key: String, tryMatch: NSDictionary?) -> String? {
-        if tryMatch == nil {
-            if let hit = cleanupKeyCache[key] {
-                return hit
-            } else { //Miss:
-                let cleanedUpKey = EVReflection.cleanupKeyNotCached(anyObject, key: key, tryMatch: tryMatch)
-                cleanupKeyCache[key] = cleanedUpKey
-                return cleanedUpKey
-            }
-        }
-        else {
-            return EVReflection.cleanupKeyNotCached(anyObject, key: key, tryMatch: tryMatch)
-        }
-    }
-    
-    private class func cleanupKeyNotCached(anyObject: NSObject, key: String, tryMatch: NSDictionary?) -> String? {
         var newKey: String = key
         
         if tryMatch?[newKey] != nil {
@@ -797,6 +784,23 @@ final public class EVReflection {
         
         return newKey
     }
+    
+    /// cleanupKey cache
+    private static var cleanupKeyCache : [ String : String? ]? = nil
+    private class func cleanupKeyCached(anyObject: NSObject, key: String, tryMatch: NSDictionary?) -> String? {
+        if let cleanupKeyCache = cleanupKeyCache {
+            if let hit = cleanupKeyCache[key] {
+                return hit
+            } else { //Miss:
+                let cleanedUpKey = EVReflection.cleanupKey(anyObject, key: key, tryMatch: tryMatch)
+                self.cleanupKeyCache![key] = cleanedUpKey
+                return cleanedUpKey
+            }
+        } else {
+            return EVReflection.cleanupKey(anyObject, key: key, tryMatch: tryMatch)
+        }
+    }
+
     
     /**
      Convert a CamelCase to Undersores
